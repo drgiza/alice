@@ -3,8 +3,29 @@
 #include <Servo.h>
 
 int led = 13;
-int home_led = 8;
+//int home_led = 8;
 int speed = 0;
+int demo = 0;
+
+// Define R-Axis Pins
+int raxis_step = 7;    //Step pin, r-axis stepper motor drive
+int raxis_dir = 8;     //Direction pin, r-axis stepper motor drive
+AccelStepper raxismotor(1,raxis_step,raxis_dir);   //Define r-axis stepper motor instance
+int rpos = 0;
+int rvel = 0;
+int racc = 0;
+
+int drpos=7000;
+
+// Define X-Axis Pins
+int xaxis_step = 10;    //Step pin, x-axis stepper motor drive
+int xaxis_dir = 11;     //Direction pin, x-axis stepper motor drive
+AccelStepper xaxismotor(1,xaxis_step,xaxis_dir);   //Define x-axis stepper motor instance
+int xpos = 0;
+int xvel = 0;
+int xacc = 0;
+
+int dxpos = 5000;
 
 // Define Whipped cream pins
 int wc_step = 2;    //Step pin, whipped cream stepper motor drive
@@ -48,43 +69,88 @@ Servo cs_servo;
 int cpos = 0;
 
 
+
 void setup() {
   Serial.begin(9600);
   // put your setup code here, to run once:
   pinMode(led,OUTPUT);
   pinMode(hed,INPUT);
   pinMode(sprinklePin,OUTPUT);
-  pinMode(home_led,OUTPUT);
+  //pinMode(home_led,OUTPUT);
   pinMode(wcbuttonPin,INPUT_PULLUP);
   pinMode(spButtonPin,INPUT_PULLUP);
+
+  
+
   digitalWrite(led,HIGH);
   analogWrite(sprinklePin,LOW);
   
   wcmotor.setMaxSpeed(2000);
   wcmotor.setAcceleration(4000);
   wcmotor.setSpeed(0);
+
+  pinMode(raxis_step,OUTPUT);
+  pinMode(raxis_dir,OUTPUT);
+  raxismotor.setMaxSpeed(2500);
+  raxismotor.setAcceleration(7000);
+  raxismotor.setSpeed(0);
+  raxismotor.moveTo(0);
+  
+
+  pinMode(xaxis_step,OUTPUT);
+  pinMode(xaxis_dir,OUTPUT);
+  xaxismotor.setMaxSpeed(4000);
+  xaxismotor.setAcceleration(5000);
+  xaxismotor.setSpeed(0);
+  xaxismotor.moveTo(0);
+  xaxismotor.setMinPulseWidth(25);
+
   Serial.println("Starting");
   home_state = 0;
-  digitalWrite(home_led,HIGH);
+  //digitalWrite(home_led,HIGH);
 
   cs_servo.attach(6,500,2500);
   cpos=90;
   cs_servo.write(cpos);
+
+  
 
 }
 
 void loop() {
 
   //wcmotor.runSpeed();
-  if(!digitalRead(hed)){
-    digitalWrite(home_led,HIGH);
-  } else{
-    digitalWrite(home_led,LOW);
-  }
+  // if(!digitalRead(hed)){
+  //   digitalWrite(home_led,HIGH);
+  // } else{
+  //   digitalWrite(home_led,LOW);
+  // }
 
   if(homing_active){
     wc_homing();
   }
+
+  if(raxismotor.distanceToGo() !=0){
+    raxismotor.run();
+  } else {
+    if(demo){
+      drpos = -drpos;
+      raxismotor.moveTo(drpos);
+    }
+  }
+
+  if(xaxismotor.distanceToGo() !=0){
+    xaxismotor.run();
+  } else {
+    if(demo){
+      dxpos = -dxpos;
+      xaxismotor.moveTo(dxpos);
+    }
+  }
+
+
+
+  
 
   //If wc button is pressed
   if(wcButton.update()){
@@ -219,6 +285,62 @@ void processCommand(char* message) {
     Serial.print("Moving servo to: ");
     Serial.println(cpos);
     cs_servo.write(cpos);
+  }
+
+  if (strncmp(message, "rpos=", 5) == 0) {
+    rpos = atoi(message + 5);
+    Serial.print("Moving r-axis to: ");
+    Serial.println(rpos);
+    raxismotor.moveTo(rpos);
+  }
+
+  if (strncmp(message, "rvel=", 5) == 0) {
+    rvel = atoi(message + 5);
+    Serial.print("R-Axis Max Speed: ");
+    Serial.println(rvel);
+    raxismotor.setMaxSpeed(rvel);
+  }
+
+  if (strncmp(message, "racc=", 5) == 0) {
+    racc = atoi(message + 5);
+    Serial.print("R-Axis Max Acceleration: ");
+    Serial.println(racc);
+    raxismotor.setAcceleration(racc);
+  }
+
+  if (strncmp(message, "xpos=", 5) == 0) {
+    xpos = atoi(message + 5);
+    Serial.print("Moving X-axis to: ");
+    Serial.println(xpos);
+    xaxismotor.moveTo(xpos);
+  }
+
+  if (strncmp(message, "xvel=", 5) == 0) {
+    xvel = atoi(message + 5);
+    Serial.print("X-Axis Max Speed: ");
+    Serial.println(xvel);
+    xaxismotor.setMaxSpeed(xvel);
+  }
+
+  if (strncmp(message, "xacc=", 5) == 0) {
+    xacc = atoi(message + 5);
+    Serial.print("X-Axis Max Acceleration: ");
+    Serial.println(xacc);
+    xaxismotor.setAcceleration(xacc);
+  }
+
+  if (strncmp(message, "demo=", 5) == 0) {
+    demo = atoi(message + 5);
+    if(demo){
+      Serial.print("Demo Mode");
+      raxismotor.moveTo(drpos);
+      xaxismotor.moveTo(dxpos);
+    }else{
+      raxismotor.moveTo(0);
+      xaxismotor.moveTo(0);
+      drpos = 7000;
+      dxpos= 5000;
+    }
   }
 
 }
