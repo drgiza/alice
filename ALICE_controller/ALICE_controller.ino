@@ -15,7 +15,7 @@ int rpos = 0;
 int rvel = 0;
 int racc = 0;
 
-int drpos=7000;
+int drpos=1600;
 
 // Define X-Axis Pins
 int xaxis_step = 10;    //Step pin, x-axis stepper motor drive
@@ -46,7 +46,7 @@ int hn = 0;
 int h0 = 0;
 int gap = 0;
 long dt0 = 0;    //whipped cream dispense time 0
-int wc_disp_pos = 0;    //whipped cream dispense position
+int wc_disp_pos = 465;    //whipped cream dispense position
 long disp_time = 0;
 int wc_dispensing = 0;
 
@@ -91,16 +91,16 @@ void setup() {
 
   pinMode(raxis_step,OUTPUT);
   pinMode(raxis_dir,OUTPUT);
-  raxismotor.setMaxSpeed(2500);
-  raxismotor.setAcceleration(7000);
+  raxismotor.setMaxSpeed(665);
+  raxismotor.setAcceleration(2500);
   raxismotor.setSpeed(0);
   raxismotor.moveTo(0);
   
 
   pinMode(xaxis_step,OUTPUT);
   pinMode(xaxis_dir,OUTPUT);
-  xaxismotor.setMaxSpeed(4000);
-  xaxismotor.setAcceleration(5000);
+  xaxismotor.setMaxSpeed(3000);
+  xaxismotor.setAcceleration(10000);
   xaxismotor.setSpeed(0);
   xaxismotor.moveTo(0);
   xaxismotor.setMinPulseWidth(25);
@@ -174,7 +174,7 @@ void loop() {
     wc_dispense();
   }
 
-  //If wc button is pressed
+  //If sprinkle button is pressed
   if(spButton.update()){
     if(spButton.fallingEdge()){
       sprinkle_dispensing = 1;
@@ -218,7 +218,6 @@ void loop() {
 
 void processCommand(char* message) {
 
-  
   if (strncmp(message, "on", 2) == 0){
     Serial.println("Turning LED ON");
     analogWrite(led,255);
@@ -338,7 +337,7 @@ void processCommand(char* message) {
     }else{
       raxismotor.moveTo(0);
       xaxismotor.moveTo(0);
-      drpos = 7000;
+      drpos = 1600;
       dxpos= 5000;
     }
   }
