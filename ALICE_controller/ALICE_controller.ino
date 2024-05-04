@@ -24,6 +24,9 @@ AccelStepper xaxismotor(1,xaxis_step,xaxis_dir);   //Define x-axis stepper motor
 int xpos = 0;
 int xvel = 0;
 int xacc = 0;
+int m0 = 16;
+int m1 = 17;
+int m2 = 18;
 
 int dxpos = 5000;
 
@@ -46,9 +49,18 @@ int hn = 0;
 int h0 = 0;
 int gap = 0;
 long dt0 = 0;    //whipped cream dispense time 0
-int wc_disp_pos = 465;    //whipped cream dispense position
+int wc_disp_pos = 495;    //whipped cream dispense position
 long disp_time = 0;
 int wc_dispensing = 0;
+int wc0 = 4663;         //Whipped cream 0 position
+int wc_max = 3710;      //Position for maximum whipped cream
+int wc_start = 3710;    //Starting position for maximum whipped cream
+int wc_qty = 0;
+int wc_xpos = 0;
+int wc_xvel = 0;
+int wc_rpos = 0;
+int wc_rvel = 0;
+float wc_time = 0;
 
 //Sprinkles
 int sprinklePin = 4;
@@ -57,6 +69,10 @@ int sprinkle_state = 0;
 int sprinkle_dc = 0;
 int sprinkle_dispensing = 0;
 long sp_t0 = 0;
+
+int dorun = 0;    //State machine state for main controller
+int mc_active = 0; //Main controller active status
+
 
 
 const int wcbuttonPin = 3;
@@ -67,6 +83,11 @@ Bounce spButton = Bounce(spButtonPin, 100);  // 10 ms debounce
 
 Servo cs_servo;
 int cpos = 0;
+int cs_state = 0;
+int cs_dispensing = 0;
+
+//int pot_cur = 0;
+int pot_prev = 0;
 
 
 
@@ -80,6 +101,13 @@ void setup() {
   pinMode(wcbuttonPin,INPUT_PULLUP);
   pinMode(spButtonPin,INPUT_PULLUP);
 
+  pinMode(m0,OUTPUT);
+  pinMode(m1,OUTPUT);
+  pinMode(m2,OUTPUT);
+  digitalWrite(m0,LOW);
+  digitalWrite(m1,LOW);
+  digitalWrite(m2,LOW);
+
   
 
   digitalWrite(led,HIGH);
@@ -88,10 +116,11 @@ void setup() {
   wcmotor.setMaxSpeed(2000);
   wcmotor.setAcceleration(4000);
   wcmotor.setSpeed(0);
+  wcmotor.setMinPulseWidth(25);
 
   pinMode(raxis_step,OUTPUT);
   pinMode(raxis_dir,OUTPUT);
-  raxismotor.setMaxSpeed(665);
+  raxismotor.setMaxSpeed(800);
   raxismotor.setAcceleration(2500);
   raxismotor.setSpeed(0);
   raxismotor.moveTo(0);
@@ -118,6 +147,21 @@ void setup() {
 }
 
 void loop() {
+
+  if(millis()-pot_prev > 100){
+    Serial.print(analogRead(A0));
+    Serial.print(',');
+    Serial.print(analogRead(A1));
+    Serial.print(',');
+    Serial.print(analogRead(A5));
+    Serial.print(',');
+    Serial.println(analogRead(A6));
+    pot_prev = millis();
+
+  }
+  if(mc_active){
+    main_controller();
+  }
 
   //wcmotor.runSpeed();
   // if(!digitalRead(hed)){
@@ -155,16 +199,17 @@ void loop() {
   //If wc button is pressed
   if(wcButton.update()){
     if(wcButton.fallingEdge()){
-      wc_dispensing = 1;
-      wc_disp_pos = 465;
-      Serial.print("Dispense position: ");
-      Serial.println(wc_disp_pos);
+      // wc_dispensing = 1;
+      // wc_disp_pos = 465;
+      // Serial.print("Dispense position: ");
+      // Serial.println(wc_disp_pos);
       
-      disp_time = int(analogRead(A0)/1023.0*1900.0 + 100.0);
-      Serial.print("Dispense time: ");
-      Serial.println(disp_time);
+      // disp_time = int(analogRead(A0)/1023.0*1900.0 + 100.0);
+      // Serial.print("Dispense time: ");
+      // Serial.println(disp_time);
 
-      Serial.print("Start whipped cream");
+      // Serial.print("Start whipped cream");
+      mc_active=1;
     } else {
       //do nothing
     }
@@ -173,6 +218,12 @@ void loop() {
   if(wc_dispensing){
     wc_dispense();
   }
+
+  if(cs_dispensing){
+    cs_dispense();
+  }
+
+  
 
   //If sprinkle button is pressed
   if(spButton.update()){
@@ -342,6 +393,12 @@ void processCommand(char* message) {
     }
   }
 
+  if (strncmp(message, "mc=", 3) == 0) {
+    mc_active = atoi(message + 3);
+    Serial.print("Main Controller Status");
+    Serial.println(mc_active);
+  }
+
 }
 
 void wc_homing() {
@@ -351,9 +408,12 @@ void wc_homing() {
     //Initial homing state
     Serial.println("Homing routine initiated...");
     hed_state = digitalRead(hed);     //Capture initial HED state
-    wcmotor.move(500);                //Command motor to move 500 steps
+    wcmotor.move(500);                //Command motor to move 500 steps for 1/16th steps
+    //wcmotor.move(1000);                //Command motor to move 1000 steps for 1/32 steps
     home_state = 1;                   //Proceed to next state
-    wcmotor.setMaxSpeed(500);         //Set maximum speed for homing
+    //wcmotor.setMaxSpeed(500);         //Set maximum speed for homing for 1/16th steps
+    wcmotor.setMaxSpeed(4000);         //Set maximum speed for homing for 1/32 steps
+    //wcmotor.setSpeed(4000);
     hn = 0;
     hp = 0;
     h0 = 0;
@@ -368,6 +428,7 @@ void wc_homing() {
         //Magnet has moved off of HED, change direction
         wcmotor.stop();
         wcmotor.move(-500);
+        //wcmotor.move(-1000);
         home_state = 2;
       } else {
         //Magnet has move over HED
@@ -377,6 +438,7 @@ void wc_homing() {
         Serial.println(hn);
         if(hp == 0){
           wcmotor.move(500);
+          //wcmotor.move(1000);
           home_state = 1;
         } else {
           //Both positive and negative edges have been found
@@ -387,6 +449,7 @@ void wc_homing() {
       }
     }
     wcmotor.run();
+    //wcmotor.runSpeedToPosition();
     break;
 
     case 2:
@@ -453,6 +516,28 @@ void wc_dispense() {
       dt0 = millis();
       disp_state = 2;
       Serial.println("At dispense position");
+
+      //Change to 1/8 step mode
+      digitalWrite(m0,HIGH);
+      digitalWrite(m1,HIGH);
+      digitalWrite(m2,LOW);
+      //Begin moving x and r axes
+      //xaxismotor.setMaxSpeed(238);
+      wc_rvel = 600;
+      raxismotor.setMaxSpeed(wc_rvel);
+      wc_rpos = int(2400.0*float(wc_qty)/1023.0);
+      raxismotor.move(wc_rpos);
+
+      wc_time = float(wc_rpos)/float(wc_rvel);
+
+      wc_xpos = (wc0-wc_start)*8;
+      xaxismotor.move(wc_xpos);
+      wc_xvel = float(wc_xpos)/wc_time;
+      xaxismotor.setMaxSpeed(wc_xvel);
+      //xaxismotor.moveTo(4663);     
+
+      xaxismotor.run();
+      raxismotor.run();
     } else {
       wcmotor.run();
     }
@@ -460,14 +545,14 @@ void wc_dispense() {
 
     case 2:
     //Wait for dispense to complete
-    if(millis() - dt0 < disp_time){
-      //Hold position and wait for dispense to complete
-      //Serial.println("Dispensing");
+    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo()){
+        wcmotor.moveTo(0);
+        disp_state = 3;
+        wcmotor.run();
+        Serial.println("Moving to home position");
     } else {
-      wcmotor.moveTo(0);
-      disp_state = 3;
-      wcmotor.run();
-      Serial.println("Moving to home position");
+      xaxismotor.run();
+      raxismotor.run();
     }
     break;
 
@@ -476,8 +561,101 @@ void wc_dispense() {
       Serial.println("Dispense complete");
       wc_dispensing = 0;
       disp_state = 0;
+
+      //Go back to full step mode
+      digitalWrite(m0,LOW);
+      digitalWrite(m1,LOW);
+      digitalWrite(m2,LOW);
+      //Reset current position for full step mode
+      xaxismotor.setCurrentPosition(4663);
+
+      xaxismotor.setMaxSpeed(3000);
+      raxismotor.setMaxSpeed(800);
     } else {
       wcmotor.run();
+    }
+    break;
+
+
+
+  }
+
+}
+
+void cs_dispense() {
+
+  switch(cs_state){
+    case 0:
+    //Initialize dispense
+    cpos = 132;
+    cs_servo.write(cpos);
+    cs_state = 1;
+    dt0 = millis();
+    Serial.println("Chocolate Syrup Dispensing");
+    break;
+
+    case 1:
+    //Move to dispense location
+    if(millis() - dt0 > 3000){
+      cs_state = 2;
+      
+      //Begin moving x and r axes
+      //xaxismotor.setMaxSpeed(238);
+      //xaxismotor.moveTo(9325);
+      //raxismotor.setMaxSpeed(600);
+      //raxismotor.move(2400);
+
+      //Change to 1/8 step mode
+      digitalWrite(m0,HIGH);
+      digitalWrite(m1,HIGH);
+      digitalWrite(m2,LOW);
+      //Begin moving x and r axes
+      //xaxismotor.setMaxSpeed(238);
+      xaxismotor.setMaxSpeed(1904);
+      //xaxismotor.moveTo(4663);
+      xaxismotor.move(7624);
+      raxismotor.setMaxSpeed(600);
+      raxismotor.move(2400);
+
+
+      xaxismotor.run();
+      raxismotor.run();
+    } else {
+      //wait for chocolate syrup to start dipping
+    }
+    break;
+
+    case 2:
+    //Wait for dispense to complete
+    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo()){
+        cpos=90;
+        cs_servo.write(cpos);
+        cs_state = 3;
+        Serial.println("Waiting for chocolate to stop dripping");
+        dt0 = millis();
+    } else {
+      xaxismotor.run();
+      raxismotor.run();
+    }
+    break;
+
+    case 3:
+    if(millis() - dt0 > 3000){
+      Serial.println("Chocolate syrup complete");
+      cs_dispensing = 0;
+      cs_state = 0;
+
+      //Go back to full step mode
+      digitalWrite(m0,LOW);
+      digitalWrite(m1,LOW);
+      digitalWrite(m2,LOW);
+      //Reset current position for full step mode
+      xaxismotor.setCurrentPosition(9325);
+
+      xaxismotor.setMaxSpeed(3000);
+      raxismotor.setMaxSpeed(800);
+    } else {
+      //wait
     }
     break;
 
@@ -496,18 +674,27 @@ void sprinkle_dispense() {
     //sprinkle_dc = 85;
     sp_t0 = millis();
     sprinkle_state = 1;
+    sprinkle_dc = 256;
+    sprinkle_time = 2000;
     analogWrite(sprinklePin,sprinkle_dc);
+    //raxismotor.setSpeed(400.0);
+    raxismotor.setMaxSpeed(400.0);
+    raxismotor.move(float(sprinkle_time)/1000.0*400.0);
     break;
 
     case 1:
     if(millis() - sp_t0 < sprinkle_time){
-      //do nothing
-      Serial.println("Sprinkling!");
+      raxismotor.run();
+      //Serial.println("Sprinkling!");
     } else {
       analogWrite(sprinklePin,0);
-      Serial.println("Done sprinkling");
-      sprinkle_state = 0;
-      sprinkle_dispensing = 0;
+      if(millis() - sp_t0 > sprinkle_time + 1500){        
+        Serial.println("Done sprinkling");
+        sprinkle_state = 0;
+        sprinkle_dispensing = 0;
+        xaxismotor.setMaxSpeed(3000);
+        raxismotor.setMaxSpeed(800);
+      }
     }    
     break;
 
@@ -515,4 +702,123 @@ void sprinkle_dispense() {
   }
 
 
+}
+
+void main_controller() {
+  
+  switch(dorun){
+
+    case 0:
+    Serial.println("Start sundae!");
+    //Read all potentiometers and determine how much of each topping to dispense
+
+    //Move to whipped cream center + additional distance depending on amount of whipped cream
+    //If No whipped cream is selected, skip and go to chocolate syrup
+    wc_qty = analogRead(A0);
+      if(wc_qty < 20){
+        xaxismotor.moveTo(8373);
+        dorun = 3;
+      } else{
+        //Determine whipped cream start position
+        wc_start = wc_max + ((wc0-wc_max) - float(wc_qty)/1023.0*float(wc0-wc_max));
+        xaxismotor.moveTo(wc_start);
+        Serial.println(wc_start);
+      }
+    
+
+    //Move on to next state
+    dorun = 1;
+    break;
+
+    case 1:
+    if(xaxismotor.distanceToGo() == 0){
+      //Begin dispensing whipped cream
+      wc_dispensing = 1;
+
+      //Move on to the next state
+      dorun = 2;
+
+    } else {
+      xaxismotor.run();
+      //If No whipped cream is selected, skip and go to chocolate syrup
+      if(wc_qty < 20){
+        xaxismotor.moveTo(8373);
+        dorun = 3;
+      }
+    }
+    break;
+
+    case 2:
+    if(wc_dispensing == 1){
+      //Do nothing, wait for whipped cream to finish dispensing
+      
+    } else {
+      //Move to chocolate syrup position
+      xaxismotor.moveTo(8373);
+      //Move on to the next state
+      dorun = 3;
+    }
+    break;
+
+    case 3:
+    if(xaxismotor.distanceToGo() == 0){
+      cs_dispensing = 1; //Make controller inactive
+      dorun = 4;    //Reset main controller state machine
+      
+    } else {
+      xaxismotor.run();
+      //If No whipped cream is selected, skip and go to chocolate syrup
+      if(analogRead(A1) < 20){
+        xaxismotor.moveTo(13988);
+        dorun = 5;
+      }
+    }
+    break;
+
+    case 4:
+    if(cs_dispensing == 1){
+      //Do nothing, wait for chocolate syrup to finish dispensing
+      
+    } else {
+      //Move to sprinkle position
+      xaxismotor.moveTo(13988);
+      //Move on to the next state
+      dorun = 5;
+    }
+    break;
+
+    case 5:
+    if(xaxismotor.distanceToGo() == 0){
+      sprinkle_dispensing = 1;
+      dorun = 6;
+      
+    } else {
+      xaxismotor.run();
+    }
+    break;
+
+    case 6:
+    if(sprinkle_dispensing == 1){
+      //Do nothing, wait for sprinkles to finish dispensing
+      
+    } else {
+      //Move to home position
+      xaxismotor.moveTo(0);
+      //Move on to the next state
+      dorun = 7;
+    }
+    break;
+
+    case 7:
+    if(xaxismotor.distanceToGo() == 0){
+      mc_active = 0; //Make controller inactive
+      dorun = 0;    //Reset main controller state machine
+      
+    } else {
+      xaxismotor.run();
+    }
+    break;
+
+
+  }
 }
