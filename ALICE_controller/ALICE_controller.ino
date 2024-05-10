@@ -69,6 +69,7 @@ int sprinkle_state = 0;
 int sprinkle_dc = 0;
 int sprinkle_dispensing = 0;
 long sp_t0 = 0;
+int sp_qty = 0;   //Sprinkle Quantity
 
 int dorun = 0;    //State machine state for main controller
 int mc_active = 0; //Main controller active status
@@ -86,8 +87,20 @@ int cpos = 0;
 int cs_state = 0;
 int cs_dispensing = 0;
 
+int cs0 = 9325;         //chocolate syrup 0 position
+int cs_max = 8373;      //Position for maximum chocolate syrup
+int cs_start = 8373;    //Starting position for maximum chocolate syrup
+int cs_qty = 0;         //Amount of chocolate syrup
+int cs_xpos = 0;
+int cs_xvel = 0;
+int cs_rpos = 0;
+int cs_rvel = 0;
+float cs_time = 0;
+
 //int pot_cur = 0;
 int pot_prev = 0;
+
+int estop = 0;
 
 
 
@@ -148,17 +161,17 @@ void setup() {
 
 void loop() {
 
-  if(millis()-pot_prev > 100){
-    Serial.print(analogRead(A0));
-    Serial.print(',');
-    Serial.print(analogRead(A1));
-    Serial.print(',');
-    Serial.print(analogRead(A5));
-    Serial.print(',');
-    Serial.println(analogRead(A6));
-    pot_prev = millis();
+  // if(millis()-pot_prev > 100){
+  //   Serial.print(analogRead(A0));
+  //   Serial.print(',');
+  //   Serial.print(analogRead(A1));
+  //   Serial.print(',');
+  //   Serial.print(analogRead(A5));
+  //   Serial.print(',');
+  //   Serial.println(analogRead(A6));
+  //   pot_prev = millis();
 
-  }
+  // }
   if(mc_active){
     main_controller();
   }
@@ -174,23 +187,23 @@ void loop() {
     wc_homing();
   }
 
-  if(raxismotor.distanceToGo() !=0){
-    raxismotor.run();
-  } else {
-    if(demo){
-      drpos = -drpos;
-      raxismotor.moveTo(drpos);
-    }
-  }
+  // if(raxismotor.distanceToGo() !=0){
+  //   raxismotor.run();
+  // } else {
+  //   if(demo){
+  //     drpos = -drpos;
+  //     raxismotor.moveTo(drpos);
+  //   }
+  // }
 
-  if(xaxismotor.distanceToGo() !=0){
-    xaxismotor.run();
-  } else {
-    if(demo){
-      dxpos = -dxpos;
-      xaxismotor.moveTo(dxpos);
-    }
-  }
+  // if(xaxismotor.distanceToGo() !=0){
+  //   xaxismotor.run();
+  // } else {
+  //   if(demo){
+  //     dxpos = -dxpos;
+  //     xaxismotor.moveTo(dxpos);
+  //   }
+  // }
 
 
 
@@ -199,17 +212,17 @@ void loop() {
   //If wc button is pressed
   if(wcButton.update()){
     if(wcButton.fallingEdge()){
-      // wc_dispensing = 1;
-      // wc_disp_pos = 465;
-      // Serial.print("Dispense position: ");
-      // Serial.println(wc_disp_pos);
       
-      // disp_time = int(analogRead(A0)/1023.0*1900.0 + 100.0);
-      // Serial.print("Dispense time: ");
-      // Serial.println(disp_time);
-
-      // Serial.print("Start whipped cream");
       mc_active=1;
+      wc_qty = analogRead(A0);
+      cs_qty = analogRead(A1);
+      sp_qty = analogRead(A5);
+      //Determine whipped cream start position
+      wc_start = wc_max + ((wc0-wc_max) - float(wc_qty)/1023.0*float(wc0-wc_max));
+
+      //Determine chocolate syrup start position
+      cs_start = cs_max + ((cs0-cs_max) - float(cs_qty)/1023.0*float(cs0-cs_max));
+
     } else {
       //do nothing
     }
@@ -228,17 +241,37 @@ void loop() {
   //If sprinkle button is pressed
   if(spButton.update()){
     if(spButton.fallingEdge()){
-      sprinkle_dispensing = 1;
-      sprinkle_dc = 85;
-            
-      sprinkle_time = int(analogRead(A1)/1023.0*1900.0 + 100.0);
-      Serial.print("Dispense time: ");
-      Serial.println(sprinkle_time);
-
-      Serial.print("Start sprinkling");
+      //ESTOP!!
+      estop = 1;
     } else {
       //do nothing
     }
+  }
+
+  if(estop){
+      mc_active = 0;
+      wc_dispensing = 0;
+      cs_dispensing = 0;
+      sprinkle_dispensing = 0;
+      //Stop motion
+      xaxismotor.stop();
+      raxismotor.stop();
+
+      //Retract syrup
+      cpos = 90;
+
+      //Move whipped cream to home
+      wcmotor.moveTo(0);
+
+      //Stop sprinkle motor
+      analogWrite(sprinklePin,0);
+
+      if(wcmotor.distanceToGo() == 0){
+        //do nothing
+      } else{
+        wcmotor.run();
+      }
+
   }
 
   if(sprinkle_dispensing){
@@ -546,7 +579,7 @@ void wc_dispense() {
 
     case 2:
     //Wait for dispense to complete
-    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo()){
+    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo() == 0){
         wcmotor.moveTo(0);
         disp_state = 3;
         wcmotor.run();
@@ -612,23 +645,41 @@ void cs_dispense() {
       digitalWrite(m2,LOW);
       //Begin moving x and r axes
       //xaxismotor.setMaxSpeed(238);
-      xaxismotor.setMaxSpeed(1904);
-      //xaxismotor.moveTo(4663);
-      xaxismotor.move(7624);
-      raxismotor.setMaxSpeed(600);
-      raxismotor.move(2400);
+
+      cs_rvel = 600;
+      // wc_rvel = 900;
+      raxismotor.setMaxSpeed(cs_rvel);
+      cs_rpos = int(2400.0*float(cs_qty)/1023.0);
+      Serial.println(cs_rpos);
+      raxismotor.move(cs_rpos);
+
+      cs_time = float(cs_rpos)/float(cs_rvel);
+
+      cs_xpos = (cs0-cs_start)*8;
+      xaxismotor.move(cs_xpos);
+      cs_xvel = float(cs_xpos)/cs_time;
+      xaxismotor.setMaxSpeed(cs_xvel);
+      // //xaxismotor.moveTo(4663);     
+
+      // xaxismotor.run();
+      // raxismotor.run();
+      // xaxismotor.setMaxSpeed(1904);
+      // //xaxismotor.moveTo(4663);
+      // xaxismotor.move(7624);
+      // raxismotor.setMaxSpeed(600);
+      // raxismotor.move(2400);
 
 
       xaxismotor.run();
       raxismotor.run();
     } else {
-      //wait for chocolate syrup to start dipping
+      //wait for chocolate syrup to start dripping
     }
     break;
 
     case 2:
     //Wait for dispense to complete
-    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo()){
+    if(xaxismotor.distanceToGo() == 0 && raxismotor.distanceToGo() == 0){
         cpos=90;
         cs_servo.write(cpos);
         cs_state = 3;
@@ -676,7 +727,7 @@ void sprinkle_dispense() {
     sp_t0 = millis();
     sprinkle_state = 1;
     sprinkle_dc = 103;
-    sprinkle_time = int(analogRead(A5)/1023.0 * 3000);
+    sprinkle_time = int(sp_qty/1023.0 * 3000);
     analogWrite(sprinklePin,sprinkle_dc);
     //raxismotor.setSpeed(400.0);
     raxismotor.setMaxSpeed(400.0);
@@ -710,20 +761,19 @@ void main_controller() {
   switch(dorun){
 
     case 0:
-    Serial.println("Start sundae!");
+    Serial.println("0: Start sundae!");
     //Read all potentiometers and determine how much of each topping to dispense
 
     //Move to whipped cream center + additional distance depending on amount of whipped cream
     //If No whipped cream is selected, skip and go to chocolate syrup
-    wc_qty = analogRead(A0);
+    //wc_qty = analogRead(A0);
       if(wc_qty < 20){
-        xaxismotor.moveTo(8373);
+        xaxismotor.moveTo(cs_start);
         dorun = 3;
       } else{
-        //Determine whipped cream start position
-        wc_start = wc_max + ((wc0-wc_max) - float(wc_qty)/1023.0*float(wc0-wc_max));
+        
         xaxismotor.moveTo(wc_start);
-        Serial.println(wc_start);
+        Serial.println("Moving to whipped cream");
       }
     
 
@@ -743,7 +793,7 @@ void main_controller() {
       xaxismotor.run();
       //If No whipped cream is selected, skip and go to chocolate syrup
       if(wc_qty < 20){
-        xaxismotor.moveTo(8373);
+        xaxismotor.moveTo(cs_start);
         xaxismotor.setMaxSpeed(3000);
         //Go back to full step mode
         digitalWrite(m0,LOW);
@@ -760,7 +810,7 @@ void main_controller() {
       
     } else {
       //Move to chocolate syrup position
-      xaxismotor.moveTo(8373);
+      xaxismotor.moveTo(cs_start);
       //Move on to the next state
       dorun = 3;
     }
@@ -774,7 +824,7 @@ void main_controller() {
     } else {
       xaxismotor.run();
       //If No chocolate syrup is selected, skip and sprinkles
-      if(analogRead(A1) < 20){
+      if(cs_qty < 20){
         xaxismotor.moveTo(13988);
         xaxismotor.setMaxSpeed(3000);
         //Go back to full step mode
@@ -806,7 +856,7 @@ void main_controller() {
     } else {
       xaxismotor.run();
       //If no sprinkles is selected, skip and go home
-      if(analogRead(A5) < 20){
+      if(sp_qty < 20){
         xaxismotor.moveTo(0);
         xaxismotor.setMaxSpeed(3000);
         digitalWrite(m0,LOW);
