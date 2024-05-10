@@ -49,12 +49,12 @@ int hn = 0;
 int h0 = 0;
 int gap = 0;
 long dt0 = 0;    //whipped cream dispense time 0
-int wc_disp_pos = 495;    //whipped cream dispense position
+int wc_disp_pos = 565;    //whipped cream dispense position
 long disp_time = 0;
 int wc_dispensing = 0;
 int wc0 = 4663;         //Whipped cream 0 position
-int wc_max = 3710;      //Position for maximum whipped cream
-int wc_start = 3710;    //Starting position for maximum whipped cream
+int wc_max = 3964;      //Position for maximum whipped cream
+int wc_start = 3964;    //Starting position for maximum whipped cream
 int wc_qty = 0;
 int wc_xpos = 0;
 int wc_xvel = 0;
@@ -508,6 +508,7 @@ void wc_dispense() {
     disp_state = 1;
     wcmotor.run();
     Serial.println("Moving to dispense position");
+    Serial.println(wc_disp_pos);
     break;
 
     case 1:
@@ -523,7 +524,7 @@ void wc_dispense() {
       digitalWrite(m2,LOW);
       //Begin moving x and r axes
       //xaxismotor.setMaxSpeed(238);
-      wc_rvel = 600;
+      wc_rvel = 900;
       raxismotor.setMaxSpeed(wc_rvel);
       wc_rpos = int(2400.0*float(wc_qty)/1023.0);
       raxismotor.move(wc_rpos);
@@ -640,7 +641,7 @@ void cs_dispense() {
     break;
 
     case 3:
-    if(millis() - dt0 > 3000){
+    if(millis() - dt0 > 5000){
       Serial.println("Chocolate syrup complete");
       cs_dispensing = 0;
       cs_state = 0;
@@ -674,8 +675,8 @@ void sprinkle_dispense() {
     //sprinkle_dc = 85;
     sp_t0 = millis();
     sprinkle_state = 1;
-    sprinkle_dc = 256;
-    sprinkle_time = 2000;
+    sprinkle_dc = 103;
+    sprinkle_time = int(analogRead(A5)/1023.0 * 3000);
     analogWrite(sprinklePin,sprinkle_dc);
     //raxismotor.setSpeed(400.0);
     raxismotor.setMaxSpeed(400.0);
@@ -743,6 +744,11 @@ void main_controller() {
       //If No whipped cream is selected, skip and go to chocolate syrup
       if(wc_qty < 20){
         xaxismotor.moveTo(8373);
+        xaxismotor.setMaxSpeed(3000);
+        //Go back to full step mode
+        digitalWrite(m0,LOW);
+        digitalWrite(m1,LOW);
+        digitalWrite(m2,LOW);
         dorun = 3;
       }
     }
@@ -767,9 +773,14 @@ void main_controller() {
       
     } else {
       xaxismotor.run();
-      //If No whipped cream is selected, skip and go to chocolate syrup
+      //If No chocolate syrup is selected, skip and sprinkles
       if(analogRead(A1) < 20){
         xaxismotor.moveTo(13988);
+        xaxismotor.setMaxSpeed(3000);
+        //Go back to full step mode
+        digitalWrite(m0,LOW);
+        digitalWrite(m1,LOW);
+        digitalWrite(m2,LOW);
         dorun = 5;
       }
     }
@@ -794,6 +805,15 @@ void main_controller() {
       
     } else {
       xaxismotor.run();
+      //If no sprinkles is selected, skip and go home
+      if(analogRead(A5) < 20){
+        xaxismotor.moveTo(0);
+        xaxismotor.setMaxSpeed(3000);
+        digitalWrite(m0,LOW);
+        digitalWrite(m1,LOW);
+        digitalWrite(m2,LOW);
+        dorun = 7;
+      }
     }
     break;
 
