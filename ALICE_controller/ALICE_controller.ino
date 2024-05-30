@@ -49,7 +49,7 @@ int hn = 0;
 int h0 = 0;
 int gap = 0;
 long dt0 = 0;    //whipped cream dispense time 0
-int wc_disp_pos = 565;    //whipped cream dispense position
+int wc_disp_pos = 535;    //whipped cream dispense position
 long disp_time = 0;
 int wc_dispensing = 0;
 int wc0 = 4663;         //Whipped cream 0 position
@@ -726,7 +726,7 @@ void sprinkle_dispense() {
     //sprinkle_dc = 85;
     sp_t0 = millis();
     sprinkle_state = 1;
-    sprinkle_dc = 103;
+    sprinkle_dc = 112;
     sprinkle_time = int(sp_qty/1023.0 * 3000);
     analogWrite(sprinklePin,sprinkle_dc);
     //raxismotor.setSpeed(400.0);
